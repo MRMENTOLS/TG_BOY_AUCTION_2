@@ -3,6 +3,8 @@ from datetime import datetime
 from config import DATABASE 
 import os
 import cv2
+import numpy as np
+from math import sqrt, ceil, floor
 
 class DatabaseManager:
     def __init__(self, database):
@@ -111,8 +113,37 @@ class DatabaseManager:
             ''')
             return cur.fetchall()
 
+    def get_winners_img(self, user_id):
+        conn = sqlite3.connect(self.database)
+        with conn:
+            cur = conn.cursor()
+            cur.execute(''' 
+            SELECT image FROM winners 
+            INNER JOIN prizes ON 
+            winners.prize_id = prizes.prize_id
+            WHERE user_id = ?''', (user_id, ))
+            return cur.fetchall()
+
+def create_collage(image_paths):
+    images = []
+    for path in image_paths:
+        image = cv2.imread(path)
+        images.append(image)
+
+    num_images = len(images)
+    num_cols = floor(sqrt(num_images))  # Поиск количество картинок по горизонтали
+    num_rows = ceil(num_images / num_cols)  # Поиск количество картинок по вертикали
+    # Создание пустого коллажа
+    collage = np.zeros((num_rows * images[0].shape[0], num_cols * images[0].shape[1], 3), dtype=np.uint8)
+    # Размещение изображений на коллаже
+    for i, image in enumerate(images):
+        row = i // num_cols
+        col = i % num_cols
+        collage[row * image.shape[0]:(row + 1) * image.shape[0], col * image.shape[1]:(col + 1) * image.shape[1], :] = image
+    return collage
+
 def hide_img(img_name):
-    image = cv2.imread(f'M4L1\img/{img_name}')
+    image = cv2.imread(f'img/{img_name}')
     blurred_image = cv2.GaussianBlur(image, (15, 15), 0)
     pixelated_image = cv2.resize(blurred_image, (30, 30), interpolation=cv2.INTER_NEAREST)
     pixelated_image = cv2.resize(pixelated_image, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
@@ -121,6 +152,6 @@ def hide_img(img_name):
 if __name__ == '__main__':
     manager = DatabaseManager(DATABASE)
     manager.create_tables()
-    prizes_img = os.listdir('M4L1\img')
+    prizes_img = os.listdir('img')
     data = [(x,) for x in prizes_img]
     manager.add_prize(data)

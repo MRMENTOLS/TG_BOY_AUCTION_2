@@ -1,9 +1,11 @@
 from telebot import TeleBot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from logic import DatabaseManager
+from logic import DatabaseManager, create_collage
 import schedule
 import threading
 import time
+import os
+import cv2
 from config import API_TOKEN, DATABASE
 
 bot = TeleBot(API_TOKEN)
@@ -29,7 +31,6 @@ def callback_query(call):
     prize_id = call.data
     user_id = call.message.chat.id
 
-    # Проверяем, сколько пользователей уже получили приз
     if manager.get_winners_count(prize_id) < 3:
         res = manager.add_winner(user_id, prize_id)
         if res:
@@ -41,6 +42,32 @@ def callback_query(call):
             bot.answer_callback_query(call.id, "Вы уже получили этот приз!")
     else:
         bot.answer_callback_query(call.id, "К сожалению, приз уже был получен тремя пользователями!")
+
+@bot.message_handler(commands=['get_my_score'])
+def get_my_score(message):
+    user_id = message.chat.id
+    # Получаем изображения, которые пользователь выиграл
+    winners_images = manager.get_winners_img(user_id)
+    prizes = [x[0] for x in winners_images]
+    
+    # Получаем все изображения
+    image_paths = os.listdir('img')
+    # Создаем список путей к изображениям для коллажа
+    image_paths = [f'img/{x}' if x in prizes else f'hidden_img/{x}' for x in image_paths]
+    
+    # Создаем коллаж
+    collage = create_collage(image_paths)
+    
+    # Сохраняем коллаж во временный файл
+    collage_path = 'collage.png'
+    cv2.imwrite(collage_path, collage)
+    
+    # Отправляем коллаж пользователю
+    with open(collage_path, 'rb') as photo:
+        bot.send_photo(user_id, photo, caption="Вот ваш коллаж с призами!")
+    
+    # Удаляем временный файл
+    os.remove(collage_path)
 
 def send_message():
     prize = manager.get_random_prize()
@@ -55,7 +82,7 @@ def send_message():
         print("Нет доступных призов для отправки.")
 
 def schedule_thread():
-    schedule.every().hour.do(send_message)  # Измените периодичность на каждый час
+    schedule.every().second.do(send_message)  # Измените периодичность на каждый час
     while True:
         schedule.run_pending()
         time.sleep(5)
